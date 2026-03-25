@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Plus } from 'lucide-react';
+import { Plus, Edit2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { UpdateStatusModal } from '@/components/production/update-status-modal';
 
 interface ProductionBatch {
   id: string;
@@ -21,6 +22,7 @@ interface ProductionBatch {
 export default function ProductionPage() {
   const [batches, setBatches] = useState<ProductionBatch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedBatch, setSelectedBatch] = useState<ProductionBatch | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -75,7 +77,7 @@ export default function ProductionPage() {
       ) : (
         <div className="grid gap-4">
           {batches.map((batch) => (
-            <Card key={batch.id} className="p-6 hover:bg-muted/50 cursor-pointer transition">
+            <Card key={batch.id} className="p-6 hover:bg-muted/50 transition">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <h3 className="font-semibold text-foreground">{batch.finished_products?.name}</h3>
@@ -87,21 +89,47 @@ export default function ProductionPage() {
                     {new Date(batch.expiry_date).toLocaleDateString()}
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="font-semibold text-foreground">{batch.quantity_produced} units</p>
-                  <p className="text-sm text-muted-foreground">Yield: {batch.actual_yield || 'Pending'}</p>
+                <div className="text-right space-y-2">
+                  <div>
+                    <p className="font-semibold text-foreground">{batch.quantity_produced} units</p>
+                    <p className="text-sm text-muted-foreground">Yield: {batch.actual_yield || 'Pending'}</p>
+                  </div>
                   <span
-                    className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold ${
+                    className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
                       statusColors[batch.status] || 'bg-gray-100 text-gray-800'
                     }`}
                   >
                     {batch.status.replace('_', ' ').toUpperCase()}
                   </span>
+                  <div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSelectedBatch(batch)}
+                      className="w-full"
+                    >
+                      <Edit2 className="h-3 w-3 mr-1" />
+                      Update Status
+                    </Button>
+                  </div>
                 </div>
               </div>
             </Card>
           ))}
         </div>
+      )}
+
+      {selectedBatch && (
+        <UpdateStatusModal
+          batchId={selectedBatch.id}
+          batchNumber={selectedBatch.batch_number}
+          currentStatus={selectedBatch.status}
+          onClose={() => setSelectedBatch(null)}
+          onStatusUpdated={() => {
+            setSelectedBatch(null);
+            fetchProductionBatches();
+          }}
+        />
       )}
     </div>
   );

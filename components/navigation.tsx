@@ -14,6 +14,9 @@ import {
   LogOut,
   Menu,
   X,
+  Calendar,
+  Brain,
+  Zap,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -23,7 +26,10 @@ const navItems = [
   { href: '/inventory', label: 'Inventory', icon: Package },
   { href: '/production', label: 'Production', icon: ShoppingCart },
   { href: '/sales', label: 'Sales Orders', icon: ShoppingCart },
-  { href: '/forecasting', label: 'Forecasting', icon: TrendingUp },
+  { href: '/calendar', label: 'Production Calendar', icon: Calendar },
+  { href: '/forecasting-ai', label: 'AI Forecasting', icon: Brain },
+  { href: '/demand-management', label: 'Demand Management', icon: Zap },
+  { href: '/mrp', label: 'MRP Planning', icon: TrendingUp },
   { href: '/suppliers', label: 'Suppliers', icon: Users },
 ];
 
@@ -40,15 +46,15 @@ export default function Navigation() {
 
   const filteredNavItems = navItems.filter((item) => {
     // All roles can access dashboard and forecasting
-    if (['dashboard', 'forecasting'].some((page) => item.href.includes(page))) {
+    if (['dashboard', 'forecasting', 'calendar', 'ai'].some((page) => item.href.includes(page))) {
       return true;
     }
     // Only admin and production_manager can access recipes, inventory, and production
     if (['recipes', 'inventory', 'production'].some((page) => item.href.includes(page))) {
       return userProfile?.role !== 'kitchen_staff';
     }
-    // Only admin and production_manager can access sales and suppliers
-    if (['sales', 'suppliers'].some((page) => item.href.includes(page))) {
+    // Only admin and production_manager can access sales, suppliers, MRP, and demand management
+    if (['sales', 'suppliers', 'mrp', 'demand'].some((page) => item.href.includes(page))) {
       return userProfile?.role !== 'kitchen_staff';
     }
     return true;
