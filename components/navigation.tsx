@@ -23,7 +23,7 @@ import { useState } from 'react';
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: BarChart3 },
   { href: '/recipes', label: 'Recipes', icon: Utensils },
-  { href: '/inventory', label: 'Inventory', icon: Package },
+  { href: '/inventory/categorized', label: 'Inventory (Categorized)', icon: Package },
   { href: '/production', label: 'Production', icon: ShoppingCart },
   { href: '/sales', label: 'Sales Orders', icon: ShoppingCart },
   { href: '/calendar', label: 'Production Calendar', icon: Calendar },

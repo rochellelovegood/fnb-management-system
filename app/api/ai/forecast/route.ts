@@ -1,11 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { forecastDemandWithAI, generateSmartRecommendations } from '@/lib/gemini-client';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { ForecastEngine, ForecastInput } from '@/lib/forecasting/forecast-engine';
 
 export async function POST(request: NextRequest) {
   try {
-    const { productId } = await request.json();
+    // IMPORTANT: Await cookies() in Next.js 15
+    const cookieStore = await cookies();
+    
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options: any) {
+            cookieStore.set({ name, value, ...options });
+          },
+          remove(name: string, options: any) {
+            cookieStore.set({ name, value: '', ...options });
+          },
+        },
+      }
+    );
+    
+    // Get request body
+    const body = await request.json();
+    const { productId, confidenceLevel = 90, forecastWeeks = 12 } = body;
 
+    // Validate required fields
     if (!productId) {
       return NextResponse.json(
         { error: 'Product ID is required' },
@@ -16,94 +41,95 @@ export async function POST(request: NextRequest) {
     // Fetch product details
     const { data: product, error: productError } = await supabase
       .from('finished_products')
-      .select('*')
+      .select('name, sku')
       .eq('id', productId)
       .single();
 
-    if (productError || !product) {
-      return NextResponse.json(
-        { error: 'Product not found' },
-        { status: 404 }
-      );
+    if (productError) {
+      console.error('Error fetching product:', productError);
     }
 
-    // Fetch 12 weeks of historical sales data
-    const { data: historicalSales, error: salesError } = await supabase
+    const productName = product?.name || 'Selected Product';
+
+    // Fetch historical sales data
+    const { data: salesOrders, error: salesError } = await supabase
       .from('sales_orders')
-      .select('order_date, quantity')
-      .eq('finished_product_id', productId)
-      .gte('order_date', new Date(Date.now() - 12 * 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
-      .order('order_date', { ascending: true });
+      .select('quantity, order_date')
+      .eq('product_id', productId)
+      .order('order_date', { ascending: true })
+      .limit(100);
 
-    if (salesError) throw salesError;
-
-    // Get current inventory
-    const { data: inventory } = await supabase
-      .from('inventory_batches')
-      .select('quantity')
-      .eq('ingredient_id', productId)
-      .gte('expiry_date', new Date().toISOString().split('T')[0]);
-
-    const currentInventory = inventory?.reduce((sum, b) => sum + b.quantity, 0) || 0;
-
-    // Get seasonal factor if exists
-    const { data: seasonalFactors } = await supabase
-      .from('seasonal_factors')
-      .select('multiplier')
-      .eq('finished_product_id', productId);
-
-    const seasonalFactor = seasonalFactors?.[0]?.multiplier || 1.0;
-
-    // Call AI forecasting
-    const forecast = await forecastDemandWithAI(
-      product.name,
-      historicalSales?.map(s => ({ date: s.order_date, quantity: s.quantity })) || [],
-      product.shelf_life_days || 14,
-      currentInventory,
-      seasonalFactor
-    );
-
-    if (!forecast) {
-      return NextResponse.json(
-        { error: 'Gemini API not configured or failed' },
-        { status: 500 }
-      );
+    if (salesError) {
+      console.error('Error fetching sales data:', salesError);
     }
 
-    // Generate recommendations
-    const recommendations = await generateSmartRecommendations(
-      product.name,
-      forecast,
-      currentInventory,
-      product.shelf_life_days || 14,
-      7 // default supplier lead time
-    );
+    // Fetch production batches
+    const { data: productionBatches, error: productionError } = await supabase
+      .from('production_batches')
+      .select('quantity_produced, production_date')
+      .eq('product_id', productId)
+      .order('production_date', { ascending: true })
+      .limit(50);
 
-    // Cache forecast in database
-    await supabase
-      .from('ai_forecasts')
-      .upsert({
-        finished_product_id: productId,
-        forecast_date: new Date().toISOString().split('T')[0],
-        predicted_demand: forecast.predicted_demand,
-        confidence_level: forecast.confidence,
-        reasoning: forecast.reasoning,
-      });
+    if (productionError) {
+      console.error('Error fetching production data:', productionError);
+    }
+
+    // Combine historical data
+    const historicalDataMap = new Map<string, number>();
+
+    // Add sales data
+    salesOrders?.forEach(order => {
+      const date = order.order_date.split('T')[0];
+      const current = historicalDataMap.get(date) || 0;
+      historicalDataMap.set(date, current + order.quantity);
+    });
+
+    // Add production data
+    productionBatches?.forEach(batch => {
+      const date = batch.production_date.split('T')[0];
+      const current = historicalDataMap.get(date) || 0;
+      historicalDataMap.set(date, current + batch.quantity_produced);
+    });
+
+    // Convert to array format
+    const historicalData = Array.from(historicalDataMap.entries())
+      .map(([date, quantity]) => ({
+        date,
+        quantity: Math.max(0, quantity),
+      }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Prepare input for forecast engine
+    const forecastInput: ForecastInput = {
+      productId,
+      productName,
+      historicalData,
+      forecastWeeks,
+      confidenceLevel,
+    };
+
+    // Generate forecast
+    const forecastResult = ForecastEngine.generateForecast(forecastInput);
 
     return NextResponse.json({
-      forecast,
-      recommendations,
-      product: {
-        id: product.id,
-        name: product.name,
-        currentInventory,
-        shelfLife: product.shelf_life_days,
-      },
+      success: true,
+      forecast: forecastResult,
+      productId,
+      productName,
+      sku: product?.sku,
+      dataPoints: historicalData.length,
+      confidenceLevel,
+      generatedAt: new Date().toISOString(),
     });
+
   } catch (error) {
-    console.error('[v0] Forecast API error:', error);
+    console.error('Forecast error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Failed to generate forecast', 
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      },
       { status: 500 }
     );
   }

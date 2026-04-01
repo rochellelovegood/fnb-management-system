@@ -1,36 +1,48 @@
+import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { NextRequest, NextResponse } from 'next/server';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    const { data, error } = await supabase.from('recipes').select('*');
-    
-    if (error) throw error;
-    return NextResponse.json(data);
-  } catch (error) {
-    console.error('[v0] Recipes GET error:', error);
-    return NextResponse.json({ error: 'Failed to fetch recipes' }, { status: 500 });
-  }
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    
     const { data, error } = await supabase
       .from('recipes')
-      .insert([body])
-      .select();
-    
-    if (error) throw error;
-    return NextResponse.json(data[0], { status: 201 });
+      .select(`
+        id,
+        version,
+        yield,
+        production_time_minutes,
+        instructions,
+        finished_products!finished_product_id (
+          name,
+          sku,
+          yield_per_batch,
+          shelf_life_days
+        )
+      `);
+
+    if (error) {
+      console.error('Supabase error:', error);
+      return NextResponse.json({ 
+        success: false, 
+        error: error.message 
+      }, { status: 500 });
+    }
+
+    console.log('Found recipes:', data?.length);
+
+    return NextResponse.json({ 
+      success: true, 
+      recipes: data || [] 
+    });
   } catch (error) {
-    console.error('[v0] Recipes POST error:', error);
-    return NextResponse.json({ error: 'Failed to create recipe' }, { status: 500 });
+    console.error('API error:', error);
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Failed to fetch recipes' 
+    }, { status: 500 });
   }
 }

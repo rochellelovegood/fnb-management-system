@@ -1,87 +1,72 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Plus } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
 interface Recipe {
   id: string;
-  finished_product_id: string;
   version: number;
   yield: number;
   production_time_minutes: number;
-  finished_products: { name: string; sku: string } | null;
+  finished_products: {
+    name: string;
+    sku: string;
+  };
 }
 
 export default function RecipesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchRecipes();
+    fetch('/api/recipes')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setRecipes(data.recipes);
+        } else {
+          setError(data.error);
+        }
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
   }, []);
 
-  const fetchRecipes = async () => {
-    try {
-      const { data } = await supabase
-        .from('recipes')
-        .select('*, finished_products(name, sku)')
-        .order('created_at', { ascending: false });
+  if (loading) {
+    return <div className="p-8">Loading recipes...</div>;
+  }
 
-      setRecipes(data || []);
-    } catch (error) {
-      console.error('Error fetching recipes:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (error) {
+    return <div className="p-8 text-red-600">Error: {error}</div>;
+  }
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Recipes</h1>
-          <p className="text-muted-foreground mt-1">Manage product recipes and formulations</p>
-        </div>
-        <Button onClick={() => router.push('/recipes/new')}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Recipe
-        </Button>
-      </div>
-
-      {loading ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">Loading recipes...</p>
-        </div>
-      ) : recipes.length === 0 ? (
-        <Card className="p-12 text-center">
-          <p className="text-muted-foreground mb-4">No recipes created yet</p>
-          <Button onClick={() => router.push('/recipes/new')}>Create First Recipe</Button>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {recipes.map((recipe) => (
-            <Card key={recipe.id} className="p-6 hover:bg-muted/50 cursor-pointer transition">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-foreground">{recipe.finished_products?.name}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    SKU: {recipe.finished_products?.sku} • Version {recipe.version}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold text-foreground">{recipe.yield} units</p>
-                  <p className="text-sm text-muted-foreground">{recipe.production_time_minutes} min</p>
-                </div>
+      <h1 className="text-2xl font-bold mb-6">Recipes</h1>
+      <div className="grid gap-4">
+        {recipes.map((recipe) => (
+          <div 
+            key={recipe.id} 
+            className="border rounded-lg p-4 hover:shadow-md cursor-pointer transition"
+            onClick={() => window.location.href = `/recipes/${recipe.id}`}
+          >
+            <h2 className="text-xl font-semibold">{recipe.finished_products.name}</h2>
+            <p className="text-gray-600">SKU: {recipe.finished_products.sku}</p>
+            <div className="grid grid-cols-2 gap-4 mt-2 text-sm">
+              <div>
+                <span className="font-medium">Version:</span> {recipe.version}
               </div>
-            </Card>
-          ))}
-        </div>
-      )}
+              <div>
+                <span className="font-medium">Yield:</span> {recipe.yield}%
+              </div>
+              <div>
+                <span className="font-medium">Production Time:</span> {recipe.production_time_minutes} minutes
+              </div>
+            </div>
+            <p className="text-blue-600 text-sm mt-2">Click to view details →</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
