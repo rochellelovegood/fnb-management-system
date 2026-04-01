@@ -8,10 +8,10 @@ const supabase = createClient(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     // 1. Validation Guard: Stop "undefined" or "null" strings before they hit the DB
     if (!id || id === 'undefined' || id === 'null') {
