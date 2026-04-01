@@ -21,13 +21,22 @@ export async function GET(
       }, { status: 400 });
     }
 
-    // 2. Fetch the Recipe and join the finished_product in one go (Optional but faster)
-    // If your foreign keys are set up in Supabase, you can do this:
+    // 2. Fetch the Recipe with its finished product and ingredients
     const { data: recipe, error: recipeError } = await supabase
       .from('recipes')
       .select(`
         *,
-        finished_products (*)
+        finished_products!inner (
+          name
+        ),
+        recipe_ingredients (
+          quantity_needed,
+          unit_of_measure,
+          wastage_factor,
+          ingredients (
+            name
+          )
+        )
       `)
       .eq('id', id)
       .single();
@@ -45,10 +54,28 @@ export async function GET(
       }, { status: 404 });
     }
 
-    // 4. Return the successful response
+    // 4. Transform to include original data + the SQL-joined structure
+    const formattedRecipe = {
+      ...recipe,
+      // Map recipe_ingredients to 'ingredients' for frontend compatibility
+      ingredients: (recipe.recipe_ingredients || []).map((ri: any) => ({
+        ...ri,
+        ingredient_name: ri.ingredients?.name,
+      })),
+      // Keep the SQL view as requested
+      sql_view: (recipe.recipe_ingredients || []).map((ri: any) => ({
+        recipe_id: recipe.id,
+        product_name: recipe.finished_products?.name,
+        ingredient_name: ri.ingredients?.name,
+        quantity_needed: ri.quantity_needed,
+        unit_of_measure: ri.unit_of_measure,
+        wastage_factor: ri.wastage_factor
+      }))
+    };
+
     return NextResponse.json({ 
       success: true, 
-      recipe: recipe
+      recipe: formattedRecipe
     });
 
   } catch (error) {
