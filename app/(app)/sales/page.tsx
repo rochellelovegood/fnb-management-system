@@ -12,10 +12,10 @@ interface SalesOrder {
   order_number: string;
   customer_name: string;
   customer_type: string;
-  quantity_ordered: number;
+  order_date: string;
   delivery_date: string;
   status: string;
-  finished_products: { name: string; unit_of_measure: string } | null;
+  special_instructions: string | null;
 }
 
 export default function SalesPage() {
@@ -29,12 +29,18 @@ export default function SalesPage() {
 
   const fetchSalesOrders = async () => {
     try {
-      const { data } = await supabase
+      // Remove the .select() that tries to join with finished_products
+      const { data, error } = await supabase
         .from('sales_orders')
-        .select('*, finished_products(name, unit_of_measure)')
+        .select('*')
         .order('delivery_date', { ascending: true });
 
-      setOrders(data || []);
+      if (error) {
+        console.error('Error fetching sales orders:', error);
+      } else {
+        console.log('Fetched orders:', data?.length);
+        setOrders(data || []);
+      }
     } catch (error) {
       console.error('Error fetching sales orders:', error);
     } finally {
@@ -44,10 +50,12 @@ export default function SalesPage() {
 
   const statusColors: Record<string, string> = {
     pending: 'bg-blue-100 text-blue-800',
+    confirmed: 'bg-green-100 text-green-800',
     picked: 'bg-yellow-100 text-yellow-800',
     packaged: 'bg-purple-100 text-purple-800',
     shipped: 'bg-orange-100 text-orange-800',
     delivered: 'bg-green-100 text-green-800',
+    cancelled: 'bg-red-100 text-red-800',
   };
 
   return (
@@ -80,19 +88,20 @@ export default function SalesPage() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-foreground">{order.customer_name}</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Order: {order.order_number} • Product: {order.finished_products?.name}
+                    Order: {order.order_number}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Type: {order.customer_type.toUpperCase()} • Delivery:{' '}
-                    {new Date(order.delivery_date).toLocaleDateString()}
+                    Type: {order.customer_type.toUpperCase()} • Order Date: {new Date(order.order_date).toLocaleDateString()} • Delivery: {new Date(order.delivery_date).toLocaleDateString()}
                   </p>
+                  {order.special_instructions && (
+                    <p className="text-sm text-muted-foreground mt-1 italic">
+                      Note: {order.special_instructions}
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
-                  <p className="font-semibold text-foreground">
-                    {order.quantity_ordered} {order.finished_products?.unit_of_measure}
-                  </p>
                   <span
-                    className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold ${
+                    className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
                       statusColors[order.status] || 'bg-gray-100 text-gray-800'
                     }`}
                   >
